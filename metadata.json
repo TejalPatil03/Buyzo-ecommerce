@@ -1,0 +1,7 @@
+{
+  "name": "BuyZo",
+  "description": "A high-velocity mobile-first multi-vendor shopping marketplace with BuyZo AI Assistant, rich catalog search, order tracking, and seller management.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
