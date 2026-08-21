@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview --config frontend/vite.config.ts",
     "test": "tsx backend/server/tests/runner.ts",
-    "clean": "Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue",
+    "clean": "node -e \"require('fs').rmSync('dist', {recursive:true, force:true})\"",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

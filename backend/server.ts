@@ -10,25 +10,34 @@ async function startServer() {
   const PORT = ENV.PORT;
 
   if (process.env.NODE_ENV !== "production") {
+    // Development: Vite dev server with HMR
     const vite = await createViteServer({
-      // Vite config now lives in frontend/ — point to it explicitly
       configFile: path.resolve(process.cwd(), "frontend/vite.config.ts"),
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
+    // Production: serve the pre-built dist/ folder
+    // server.cjs lives inside dist/ after build, so static files are in the same dir
+    const distPath = path.resolve(__dirname);
+
+    logger.info(`Serving static files from: ${distPath}`);
+
+    // Serve static assets (JS, CSS, images)
+    app.use(express.static(distPath, { index: false }));
+
+    // All non-API routes serve index.html for React Router (SPA fallback)
+    app.get(/^(?!\/api).*/, (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    logger.info(`BuyZo Production-Ready API Server running on http://localhost:${PORT}`);
-    logger.info(`API v1 Base Endpoint: http://localhost:${PORT}/api/v1`);
-    logger.info(`Health Endpoint: http://localhost:${PORT}/api/health`);
+    logger.info(`BuyZo Server running on http://localhost:${PORT}`);
+    logger.info(`API: http://localhost:${PORT}/api/v1`);
+    logger.info(`Health: http://localhost:${PORT}/api/health`);
+    logger.info(`ENV: ${ENV.NODE_ENV}`);
   });
 }
 
