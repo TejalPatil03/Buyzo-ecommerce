@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PRODUCTS, SAMPLE_ORDERS, SAMPLE_ADDRESSES } from './data/mockData';
 import { Product, Order, Address, CartItem, AppView, UserRole, Category, UserProfile, PaymentTransaction } from './types';
+import { api } from './services/api';
 import { TopAppBar } from './components/TopAppBar';
 import { BottomNavBar } from './components/BottomNavBar';
 import { HomeScreen } from './components/HomeScreen';
@@ -30,13 +31,14 @@ export default function App() {
 
   // Authenticated User State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>({
-    id: 'usr-rahul-sharma',
-    fullName: 'Rahul Sharma',
-    email: 'rahul.sharma@example.com',
-    phone: '9876543210',
+    id: 'user-shopper-tejal',
+    fullName: 'Tejal Patil',
+    email: 'tejal.patil@example.com',
+    phone: '9820145678',
     role: 'customer',
-    avatarLetter: 'R',
-    joinedDate: 'August 2023',
+    avatarLetter: 'T',
+    isVip: true,
+    city: 'Mumbai',
   });
 
   // Domain State
@@ -58,6 +60,53 @@ export default function App() {
   const [checkoutSelectedAddress, setCheckoutSelectedAddress] = useState<Address>(SAMPLE_ADDRESSES[0]);
   const [checkoutInitialPaymentMethod, setCheckoutInitialPaymentMethod] = useState<string>('UPI');
 
+  // Initial Data Sync with Backend API
+  useEffect(() => {
+    async function initData() {
+      try {
+        // 1. Fetch catalog products
+        const fetchedProducts = await api.products.getProducts().catch(() => null);
+        if (fetchedProducts && fetchedProducts.length > 0) {
+          setProducts(fetchedProducts);
+        }
+
+        // 2. Fetch authenticated profile if token exists
+        const token = api.auth.getToken();
+        if (token) {
+          const profileData = await api.auth.getMe().catch(() => null);
+          if (profileData?.user) {
+            setCurrentUser(profileData.user);
+            setUserRole(profileData.user.role);
+          }
+        }
+
+        // 3. Fetch addresses
+        const fetchedAddresses = await api.addresses.getAddresses().catch(() => null);
+        if (fetchedAddresses && fetchedAddresses.length > 0) {
+          setAddresses(fetchedAddresses);
+          setCheckoutSelectedAddress(fetchedAddresses[0]);
+        }
+
+        // 4. Fetch orders
+        const fetchedOrders = await api.orders.getOrders().catch(() => null);
+        if (fetchedOrders && fetchedOrders.length > 0) {
+          setOrders(fetchedOrders);
+          setSelectedOrder(fetchedOrders[0]);
+        }
+
+        // 5. Fetch cart
+        const fetchedCart = await api.cart.getCart().catch(() => null);
+        if (fetchedCart && fetchedCart.length > 0) {
+          setCart(fetchedCart);
+        }
+      } catch (err) {
+        console.warn('Backend sync initialized in fallback/offline mode:', err);
+      }
+    }
+
+    initData();
+  }, []);
+
   // Cart operations
   const handleAddToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -70,6 +119,9 @@ export default function App() {
       }
       return [...prev, { product, quantity: 1 }];
     });
+
+    // Background API Sync
+    api.cart.addItem(product.id, 1).catch(() => {});
   };
 
   const handleUpdateCartQuantity = (productId: string, delta: number) => {
@@ -84,10 +136,14 @@ export default function App() {
         })
         .filter((item): item is CartItem => item !== null)
     );
+
+    // Background API Sync
+    api.cart.updateQuantity(productId, delta).catch(() => {});
   };
 
   const handleRemoveFromCart = (productId: string) => {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
+    api.cart.removeItem(productId).catch(() => {});
   };
 
   // Wishlist operations
@@ -139,13 +195,20 @@ export default function App() {
 
   const handlePaymentComplete = (transaction: PaymentTransaction, newOrder: Order) => {
     setOrders((prev) => {
-      // Avoid duplicate order if already added
       const exists = prev.some((o) => o.id === newOrder.id || o.orderNumber === newOrder.orderNumber);
       if (exists) return prev;
       return [newOrder, ...prev];
     });
     setSelectedOrder(newOrder);
     setCart([]);
+
+    // Background API Sync
+    api.orders.createOrder({
+      items: newOrder.items.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
+      deliveryAddress: newOrder.deliveryAddress,
+      paymentMethod: newOrder.paymentMethod,
+      paymentDetails: transaction,
+    }).catch(() => {});
   };
 
   const handleDirectPlaceOrderSuccess = (newOrder: Order) => {
@@ -184,6 +247,9 @@ export default function App() {
     if (selectedOrder.id === orderId) {
       setSelectedOrder((prev) => ({ ...prev, status: 'Cancelled' }));
     }
+
+    // Background API Sync
+    api.orders.cancelOrder(orderId).catch(() => {});
   };
 
   const handleRequestReturn = (orderId: string, reason: string) => {
@@ -211,6 +277,9 @@ export default function App() {
     if (selectedOrder.id === orderId) {
       setSelectedOrder((prev) => ({ ...prev, returnStatus: 'Requested' }));
     }
+
+    // Background API Sync
+    api.orders.requestReturn(orderId, reason).catch(() => {});
   };
 
   const handleApproveReturn = (orderId: string) => {
@@ -235,6 +304,9 @@ export default function App() {
           : o
       )
     );
+
+    // Background API Sync
+    api.admin.approveReturn(orderId).catch(() => {});
   };
 
   const handleRejectReturn = (orderId: string) => {
@@ -248,6 +320,9 @@ export default function App() {
           : o
       )
     );
+
+    // Background API Sync
+    api.admin.rejectReturn(orderId, 'Policy Non-Compliant').catch(() => {});
   };
 
   const handleUpdateProductStock = (productId: string, newStock: number) => {
@@ -258,16 +333,25 @@ export default function App() {
           : p
       )
     );
+
+    // Background API Sync
+    api.seller.updateStock(productId, newStock).catch(() => {});
   };
 
   const handleAddNewProduct = (newProduct: Product) => {
     setProducts((prev) => [newProduct, ...prev]);
+
+    // Background API Sync
+    api.seller.addProduct(newProduct).catch(() => {});
   };
 
   const handleUpdateOrderStatus = (orderId: string, newStatus: Order['status']) => {
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
     );
+
+    // Background API Sync
+    api.seller.updateOrderStatus(orderId, newStatus).catch(() => {});
   };
 
   // Auth Handlers
@@ -284,6 +368,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    api.auth.logout();
     setCurrentUser(null);
     setUserRole('customer');
     navigateTo('home');
@@ -395,7 +480,10 @@ export default function App() {
           <CheckoutScreen
             cart={cart}
             addresses={addresses}
-            onAddAddress={(newAddr) => setAddresses((prev) => [newAddr, ...prev])}
+            onAddAddress={(newAddr) => {
+              setAddresses((prev) => [newAddr, ...prev]);
+              api.addresses.addAddress(newAddr).catch(() => {});
+            }}
             onProceedToPayment={handleProceedToPayment}
             onPlaceOrderSuccess={handleDirectPlaceOrderSuccess}
             setCurrentView={navigateTo}
